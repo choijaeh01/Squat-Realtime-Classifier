@@ -98,7 +98,7 @@ squat_classifier_ssl/
 
 1. **저장소 클론**
 ```bash
-git clone https://github.com/yourusername/squat_classifier_ssl.git
+git clone https://github.com/yourusername/squat_classifier_ssl.git](https://github.com/choijaeh01/Squat-Realtime-Classifier.git
 cd squat_classifier_ssl
 ```
 
