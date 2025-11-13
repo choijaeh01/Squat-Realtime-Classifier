@@ -1,0 +1,12 @@
+{
+  "results": {
+    "subject1": 0.69,
+    "subject2": 0.67,
+    "subject3": 0.73,
+    "subject4": 0.79,
+    "subject5": 0.81,
+    "subject6": 0.79
+  },
+  "mean_accuracy": 0.7466666666666667,
+  "std_accuracy": 0.05853773711604053
+}

@@ -1,0 +1,46 @@
+
+# 스쿼트 SSL 프로젝트 기본 설정
+project:
+  name: "squat_ssl"
+  version: "1.0.0"
+
+data:
+  root_dir: "data/manually_labeled"
+  sampling_rate: 108.0
+  window_length: 256
+  n_classes: 5
+
+model:
+  ssl:
+    input_dim: 18
+    temporal_dim: 64
+    contextual_dim: 64
+    repr_dim: 128
+    pred_hidden_dim: 512
+    pred_output_dim: 128
+
+  classifier:
+    backbone: "cnn_gru"  # cnn_gru, tcn, transformer
+    hidden_dim: 128
+    n_layers: 2
+
+training:
+  ssl:
+    max_epochs: 100
+    batch_size: 32
+    learning_rate: 0.001
+    weight_decay: 0.0001
+
+  classifier:
+    max_epochs: 50
+    batch_size: 32
+    learning_rate: 0.001
+    weight_decay: 0.0001
+
+augmentation:
+  type: "simsiam"  # basic, simsiam, strong
+  sampling_rate: 108.0
+
+evaluation:
+  metrics: ["accuracy", "precision", "recall", "f1"]
+  cross_validation: "subject_wise"

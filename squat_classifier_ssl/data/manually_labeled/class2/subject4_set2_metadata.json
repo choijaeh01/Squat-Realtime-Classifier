@@ -1,0 +1,98 @@
+{
+  "source_file": "raw/labeled/class2/subject4_set2.csv",
+  "num_windows": 10,
+  "sampling_rate": 100,
+  "method": "manual",
+  "windows": [
+    {
+      "window_id": 0,
+      "start_time": 0.30569627341343075,
+      "end_time": 4.724369536866474,
+      "start_sample": 30,
+      "end_sample": 472,
+      "duration_sec": 4.4186732634530435,
+      "num_samples": 442
+    },
+    {
+      "window_id": 1,
+      "start_time": 4.724369536866472,
+      "end_time": 8.187653986599939,
+      "start_sample": 472,
+      "end_sample": 818,
+      "duration_sec": 3.4632844497334663,
+      "num_samples": 346
+    },
+    {
+      "window_id": 2,
+      "start_time": 8.187653986599939,
+      "end_time": 11.8897856397633,
+      "start_sample": 818,
+      "end_sample": 1188,
+      "duration_sec": 3.7021316531633612,
+      "num_samples": 370
+    },
+    {
+      "window_id": 3,
+      "start_time": 11.8897856397633,
+      "end_time": 15.830764496356554,
+      "start_sample": 1188,
+      "end_sample": 1583,
+      "duration_sec": 3.9409788565932544,
+      "num_samples": 395
+    },
+    {
+      "window_id": 4,
+      "start_time": 15.830764496356554,
+      "end_time": 19.891166954664758,
+      "start_sample": 1583,
+      "end_sample": 1989,
+      "duration_sec": 4.060402458308204,
+      "num_samples": 406
+    },
+    {
+      "window_id": 5,
+      "start_time": 19.891166954664758,
+      "end_time": 23.951569412972958,
+      "start_sample": 1989,
+      "end_sample": 2395,
+      "duration_sec": 4.0604024583082,
+      "num_samples": 406
+    },
+    {
+      "window_id": 6,
+      "start_time": 23.991377280211275,
+      "end_time": 28.131395472996104,
+      "start_sample": 2399,
+      "end_sample": 2813,
+      "duration_sec": 4.140018192784829,
+      "num_samples": 414
+    },
+    {
+      "window_id": 7,
+      "start_time": 28.131395472996104,
+      "end_time": 32.03256646235105,
+      "start_sample": 2813,
+      "end_sample": 3203,
+      "duration_sec": 3.901170989354945,
+      "num_samples": 390
+    },
+    {
+      "window_id": 8,
+      "start_time": 32.03256646235105,
+      "end_time": 36.212392522374195,
+      "start_sample": 3203,
+      "end_sample": 3621,
+      "duration_sec": 4.179826060023146,
+      "num_samples": 418
+    },
+    {
+      "window_id": 9,
+      "start_time": 36.212392522374195,
+      "end_time": 40.551450051350606,
+      "start_sample": 3621,
+      "end_sample": 4055,
+      "duration_sec": 4.3390575289764115,
+      "num_samples": 434
+    }
+  ]
+}

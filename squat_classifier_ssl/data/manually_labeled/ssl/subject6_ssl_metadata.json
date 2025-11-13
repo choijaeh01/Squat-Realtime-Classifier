@@ -1,0 +1,234 @@
+{
+  "source_file": "raw/unlabeled/subject6_ssl.csv",
+  "num_windows": 25,
+  "sampling_rate": 100,
+  "method": "manual",
+  "is_ssl": true,
+  "windows": [
+    {
+      "window_id": 0,
+      "start_time": 0.7731106478654537,
+      "end_time": 3.357983116919879,
+      "start_sample": 77,
+      "end_sample": 335,
+      "duration_sec": 2.5848724690544254,
+      "num_samples": 258
+    },
+    {
+      "window_id": 1,
+      "start_time": 3.357983116919879,
+      "end_time": 5.320571473053796,
+      "start_sample": 335,
+      "end_sample": 532,
+      "duration_sec": 1.9625883561339172,
+      "num_samples": 197
+    },
+    {
+      "window_id": 2,
+      "start_time": 5.320571473053796,
+      "end_time": 7.235291820501519,
+      "start_sample": 532,
+      "end_sample": 723,
+      "duration_sec": 1.914720347447723,
+      "num_samples": 191
+    },
+    {
+      "window_id": 3,
+      "start_time": 7.235291820501519,
+      "end_time": 9.054276150576857,
+      "start_sample": 723,
+      "end_sample": 905,
+      "duration_sec": 1.818984330075338,
+      "num_samples": 182
+    },
+    {
+      "window_id": 4,
+      "start_time": 9.10214415926305,
+      "end_time": 11.064732515396965,
+      "start_sample": 910,
+      "end_sample": 1106,
+      "duration_sec": 1.9625883561339155,
+      "num_samples": 196
+    },
+    {
+      "window_id": 5,
+      "start_time": 11.064732515396965,
+      "end_time": 13.506000958392814,
+      "start_sample": 1106,
+      "end_sample": 1350,
+      "duration_sec": 2.441268442995849,
+      "num_samples": 244
+    },
+    {
+      "window_id": 6,
+      "start_time": 13.506000958392814,
+      "end_time": 15.468589314526728,
+      "start_sample": 1350,
+      "end_sample": 1546,
+      "duration_sec": 1.9625883561339137,
+      "num_samples": 196
+    },
+    {
+      "window_id": 7,
+      "start_time": 15.420721305840537,
+      "end_time": 17.33544165328826,
+      "start_sample": 1542,
+      "end_sample": 1733,
+      "duration_sec": 1.914720347447723,
+      "num_samples": 191
+    },
+    {
+      "window_id": 8,
+      "start_time": 17.33544165328826,
+      "end_time": 19.1544259833636,
+      "start_sample": 1733,
+      "end_sample": 1915,
+      "duration_sec": 1.818984330075338,
+      "num_samples": 182
+    },
+    {
+      "window_id": 9,
+      "start_time": 19.1544259833636,
+      "end_time": 20.877674296066548,
+      "start_sample": 1915,
+      "end_sample": 2087,
+      "duration_sec": 1.7232483127029496,
+      "num_samples": 172
+    },
+    {
+      "window_id": 10,
+      "start_time": 20.877674296066548,
+      "end_time": 22.600922608769498,
+      "start_sample": 2087,
+      "end_sample": 2260,
+      "duration_sec": 1.7232483127029496,
+      "num_samples": 173
+    },
+    {
+      "window_id": 11,
+      "start_time": 22.600922608769498,
+      "end_time": 24.32417092147245,
+      "start_sample": 2260,
+      "end_sample": 2432,
+      "duration_sec": 1.7232483127029532,
+      "num_samples": 172
+    },
+    {
+      "window_id": 12,
+      "start_time": 24.32417092147245,
+      "end_time": 26.0474192341754,
+      "start_sample": 2432,
+      "end_sample": 2604,
+      "duration_sec": 1.7232483127029496,
+      "num_samples": 172
+    },
+    {
+      "window_id": 13,
+      "start_time": 26.0474192341754,
+      "end_time": 27.722799538192156,
+      "start_sample": 2604,
+      "end_sample": 2772,
+      "duration_sec": 1.6753803040167554,
+      "num_samples": 168
+    },
+    {
+      "window_id": 14,
+      "start_time": 27.722799538192156,
+      "end_time": 29.39817984220892,
+      "start_sample": 2772,
+      "end_sample": 2939,
+      "duration_sec": 1.6753803040167625,
+      "num_samples": 167
+    },
+    {
+      "window_id": 15,
+      "start_time": 29.39817984220892,
+      "end_time": 31.073560146225674,
+      "start_sample": 2939,
+      "end_sample": 3107,
+      "duration_sec": 1.6753803040167554,
+      "num_samples": 168
+    },
+    {
+      "window_id": 16,
+      "start_time": 31.073560146225674,
+      "end_time": 32.84467646761482,
+      "start_sample": 3107,
+      "end_sample": 3284,
+      "duration_sec": 1.7711163213891439,
+      "num_samples": 177
+    },
+    {
+      "window_id": 17,
+      "start_time": 32.84467646761482,
+      "end_time": 34.80726482374873,
+      "start_sample": 3284,
+      "end_sample": 3480,
+      "duration_sec": 1.9625883561339137,
+      "num_samples": 196
+    },
+    {
+      "window_id": 18,
+      "start_time": 34.80726482374873,
+      "end_time": 36.81772118856885,
+      "start_sample": 3480,
+      "end_sample": 3681,
+      "duration_sec": 2.010456364820115,
+      "num_samples": 201
+    },
+    {
+      "window_id": 19,
+      "start_time": 36.81772118856885,
+      "end_time": 38.68457352733037,
+      "start_sample": 3681,
+      "end_sample": 3868,
+      "duration_sec": 1.8668523387615252,
+      "num_samples": 187
+    },
+    {
+      "window_id": 20,
+      "start_time": 38.68457352733037,
+      "end_time": 40.5992938747781,
+      "start_sample": 3868,
+      "end_sample": 4059,
+      "duration_sec": 1.9147203474477266,
+      "num_samples": 191
+    },
+    {
+      "window_id": 21,
+      "start_time": 40.5992938747781,
+      "end_time": 42.46614621353963,
+      "start_sample": 4059,
+      "end_sample": 4246,
+      "duration_sec": 1.8668523387615323,
+      "num_samples": 187
+    },
+    {
+      "window_id": 22,
+      "start_time": 42.46614621353963,
+      "end_time": 44.237262534928774,
+      "start_sample": 4246,
+      "end_sample": 4423,
+      "duration_sec": 1.7711163213891439,
+      "num_samples": 177
+    },
+    {
+      "window_id": 23,
+      "start_time": 44.237262534928774,
+      "end_time": 46.1041148736903,
+      "start_sample": 4423,
+      "end_sample": 4610,
+      "duration_sec": 1.8668523387615252,
+      "num_samples": 187
+    },
+    {
+      "window_id": 24,
+      "start_time": 46.1041148736903,
+      "end_time": 48.25817526456899,
+      "start_sample": 4610,
+      "end_sample": 4825,
+      "duration_sec": 2.1540603908786906,
+      "num_samples": 215
+    }
+  ]
+}

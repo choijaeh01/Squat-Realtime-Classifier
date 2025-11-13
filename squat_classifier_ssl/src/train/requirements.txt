@@ -1,0 +1,37 @@
+# 1. 핵심 딥러닝 및 하드웨어 지원
+# TensorFlow 2.10.0은 Windows 네이티브 GPU 지원의 마지막 안정 버전입니다.
+tensorflow==2.10.0
+
+# CUDA Toolkit 11.2와 호환되는 버전이 필요합니다. 
+# CUDA/cuDNN은 시스템에 설치해야 하며, 이 패키지가 대신 설치하지 않습니다.
+# (tf-gpu 대신 tensorflow를 사용하며, 이는 내부적으로 GPU 호환 코드를 포함합니다.)
+# 'tensorflow-io'나 'tensorflow-addons'와 같은 추가 패키지는 필요 시 별도로 추가해야 합니다.
+
+
+# 2. NumPy 버전 충돌 해결
+# TensorFlow 2.10.0은 NumPy 1.x 버전과 호환됩니다. 
+# 최신 NumPy 2.x 버전 사용 시 발생하는 충돌 문제를 해결합니다.
+numpy==1.22.4
+
+
+# 3. 데이터 처리 및 분석
+pandas>=1.3.0,<2.0.0
+# pathlib (Python 내장 모듈, 명시적 설치 불필요)
+# os (Python 내장 모듈, 명시적 설치 불필요)
+# math (Python 내장 모듈, 명시적 설치 불필요)
+
+
+# 4. 머신러닝 및 유틸리티
+# Scikit-learn: 데이터 분할 및 전처리 (StandardScaler, train_test_split 등)
+scikit-learn>=1.0.0,<1.4.0
+
+# Matplotlib: 시각화
+matplotlib>=3.5.0
+
+# joblib: 모델/스케일러 저장 및 로드
+joblib>=1.1.0
+
+
+# 5. 사용자 정의 모듈 (참고)
+# src.train.ssl_pretrain 모듈은 귀하의 로컬 프로젝트에 존재해야 합니다.
+# 만약 이 모듈이 PyPI에 배포된 외부 라이브러리라면, 해당 라이브러리의 이름을 여기에 추가해야 합니다.

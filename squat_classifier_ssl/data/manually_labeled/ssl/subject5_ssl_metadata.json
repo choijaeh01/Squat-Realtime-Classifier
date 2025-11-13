@@ -1,0 +1,234 @@
+{
+  "source_file": "raw/unlabeled/subject5_ssl.csv",
+  "num_windows": 25,
+  "sampling_rate": 100,
+  "method": "manual",
+  "is_ssl": true,
+  "windows": [
+    {
+      "window_id": 0,
+      "start_time": 6.003438754370066,
+      "end_time": 8.251416871681993,
+      "start_sample": 600,
+      "end_sample": 825,
+      "duration_sec": 2.247978117311927,
+      "num_samples": 225
+    },
+    {
+      "window_id": 1,
+      "start_time": 8.25141687168199,
+      "end_time": 10.45776576459925,
+      "start_sample": 825,
+      "end_sample": 1045,
+      "duration_sec": 2.2063488929172603,
+      "num_samples": 220
+    },
+    {
+      "window_id": 2,
+      "start_time": 10.45776576459925,
+      "end_time": 12.705743881911177,
+      "start_sample": 1045,
+      "end_sample": 1270,
+      "duration_sec": 2.247978117311927,
+      "num_samples": 225
+    },
+    {
+      "window_id": 3,
+      "start_time": 12.705743881911177,
+      "end_time": 14.87046355043377,
+      "start_sample": 1270,
+      "end_sample": 1487,
+      "duration_sec": 2.1647196685225936,
+      "num_samples": 217
+    },
+    {
+      "window_id": 4,
+      "start_time": 14.87046355043377,
+      "end_time": 17.20170011653503,
+      "start_sample": 1487,
+      "end_sample": 1720,
+      "duration_sec": 2.331236566101259,
+      "num_samples": 233
+    },
+    {
+      "window_id": 5,
+      "start_time": 17.20170011653503,
+      "end_time": 19.366419785057623,
+      "start_sample": 1720,
+      "end_sample": 1936,
+      "duration_sec": 2.1647196685225936,
+      "num_samples": 216
+    },
+    {
+      "window_id": 6,
+      "start_time": 19.366419785057623,
+      "end_time": 21.572768677974885,
+      "start_sample": 1936,
+      "end_sample": 2157,
+      "duration_sec": 2.206348892917262,
+      "num_samples": 221
+    },
+    {
+      "window_id": 7,
+      "start_time": 21.572768677974885,
+      "end_time": 23.82074679528681,
+      "start_sample": 2157,
+      "end_sample": 2382,
+      "duration_sec": 2.2479781173119235,
+      "num_samples": 225
+    },
+    {
+      "window_id": 8,
+      "start_time": 23.82074679528681,
+      "end_time": 26.31850025896673,
+      "start_sample": 2382,
+      "end_sample": 2631,
+      "duration_sec": 2.4977534636799206,
+      "num_samples": 249
+    },
+    {
+      "window_id": 9,
+      "start_time": 26.360129483361398,
+      "end_time": 28.85788294704131,
+      "start_sample": 2636,
+      "end_sample": 2885,
+      "duration_sec": 2.4977534636799135,
+      "num_samples": 249
+    },
+    {
+      "window_id": 10,
+      "start_time": 28.85788294704131,
+      "end_time": 31.189119513142565,
+      "start_sample": 2885,
+      "end_sample": 3118,
+      "duration_sec": 2.3312365661012535,
+      "num_samples": 233
+    },
+    {
+      "window_id": 11,
+      "start_time": 31.189119513142565,
+      "end_time": 33.603614528033155,
+      "start_sample": 3118,
+      "end_sample": 3360,
+      "duration_sec": 2.4144950148905906,
+      "num_samples": 242
+    },
+    {
+      "window_id": 12,
+      "start_time": 33.603614528033155,
+      "end_time": 36.101367991713076,
+      "start_sample": 3360,
+      "end_sample": 3610,
+      "duration_sec": 2.4977534636799206,
+      "num_samples": 250
+    },
+    {
+      "window_id": 13,
+      "start_time": 36.101367991713076,
+      "end_time": 38.349346109025,
+      "start_sample": 3610,
+      "end_sample": 3834,
+      "duration_sec": 2.2479781173119235,
+      "num_samples": 224
+    },
+    {
+      "window_id": 14,
+      "start_time": 38.349346109025,
+      "end_time": 40.68058267512625,
+      "start_sample": 3834,
+      "end_sample": 4068,
+      "duration_sec": 2.3312365661012535,
+      "num_samples": 234
+    },
+    {
+      "window_id": 15,
+      "start_time": 40.68058267512625,
+      "end_time": 42.970190016832845,
+      "start_sample": 4068,
+      "end_sample": 4297,
+      "duration_sec": 2.289607341706592,
+      "num_samples": 229
+    },
+    {
+      "window_id": 16,
+      "start_time": 42.970190016832845,
+      "end_time": 45.301426582934106,
+      "start_sample": 4297,
+      "end_sample": 4530,
+      "duration_sec": 2.3312365661012606,
+      "num_samples": 233
+    },
+    {
+      "window_id": 17,
+      "start_time": 45.301426582934106,
+      "end_time": 47.59103392464069,
+      "start_sample": 4530,
+      "end_sample": 4759,
+      "duration_sec": 2.289607341706585,
+      "num_samples": 229
+    },
+    {
+      "window_id": 18,
+      "start_time": 47.59103392464069,
+      "end_time": 49.96389971513661,
+      "start_sample": 4759,
+      "end_sample": 4996,
+      "duration_sec": 2.372865790495922,
+      "num_samples": 237
+    },
+    {
+      "window_id": 19,
+      "start_time": 49.96389971513661,
+      "end_time": 52.29513628123787,
+      "start_sample": 4996,
+      "end_sample": 5229,
+      "duration_sec": 2.3312365661012606,
+      "num_samples": 233
+    },
+    {
+      "window_id": 20,
+      "start_time": 52.29513628123787,
+      "end_time": 54.584743622944465,
+      "start_sample": 5229,
+      "end_sample": 5458,
+      "duration_sec": 2.289607341706592,
+      "num_samples": 229
+    },
+    {
+      "window_id": 21,
+      "start_time": 54.584743622944465,
+      "end_time": 56.95760941344039,
+      "start_sample": 5458,
+      "end_sample": 5695,
+      "duration_sec": 2.372865790495922,
+      "num_samples": 237
+    },
+    {
+      "window_id": 22,
+      "start_time": 56.95760941344039,
+      "end_time": 59.28884597954164,
+      "start_sample": 5695,
+      "end_sample": 5928,
+      "duration_sec": 2.3312365661012535,
+      "num_samples": 233
+    },
+    {
+      "window_id": 23,
+      "start_time": 59.28884597954164,
+      "end_time": 61.786599443221554,
+      "start_sample": 5928,
+      "end_sample": 6178,
+      "duration_sec": 2.4977534636799135,
+      "num_samples": 250
+    },
+    {
+      "window_id": 24,
+      "start_time": 61.786599443221554,
+      "end_time": 64.57575747766413,
+      "start_sample": 6178,
+      "end_sample": 6457,
+      "duration_sec": 2.789158034442572,
+      "num_samples": 279
+    }
+  ]
+}

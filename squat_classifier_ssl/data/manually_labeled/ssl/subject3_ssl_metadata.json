@@ -1,0 +1,234 @@
+{
+  "source_file": "raw/unlabeled/subject3_ssl.csv",
+  "num_windows": 25,
+  "sampling_rate": 100,
+  "method": "manual",
+  "is_ssl": true,
+  "windows": [
+    {
+      "window_id": 0,
+      "start_time": 0.5684423487544485,
+      "end_time": 2.985883985765124,
+      "start_sample": 56,
+      "end_sample": 298,
+      "duration_sec": 2.4174416370106755,
+      "num_samples": 242
+    },
+    {
+      "window_id": 1,
+      "start_time": 2.985883985765124,
+      "end_time": 5.122227758007117,
+      "start_sample": 298,
+      "end_sample": 512,
+      "duration_sec": 2.136343772241993,
+      "num_samples": 214
+    },
+    {
+      "window_id": 2,
+      "start_time": 5.122227758007117,
+      "end_time": 7.25857153024911,
+      "start_sample": 512,
+      "end_sample": 725,
+      "duration_sec": 2.136343772241993,
+      "num_samples": 213
+    },
+    {
+      "window_id": 3,
+      "start_time": 7.25857153024911,
+      "end_time": 9.28247615658363,
+      "start_sample": 725,
+      "end_sample": 928,
+      "duration_sec": 2.02390462633452,
+      "num_samples": 203
+    },
+    {
+      "window_id": 4,
+      "start_time": 9.28247615658363,
+      "end_time": 11.193941637010678,
+      "start_sample": 928,
+      "end_sample": 1119,
+      "duration_sec": 1.9114654804270472,
+      "num_samples": 191
+    },
+    {
+      "window_id": 5,
+      "start_time": 11.193941637010678,
+      "end_time": 13.105407117437721,
+      "start_sample": 1119,
+      "end_sample": 1310,
+      "duration_sec": 1.9114654804270437,
+      "num_samples": 191
+    },
+    {
+      "window_id": 6,
+      "start_time": 13.105407117437721,
+      "end_time": 15.129311743772242,
+      "start_sample": 1310,
+      "end_sample": 1512,
+      "duration_sec": 2.02390462633452,
+      "num_samples": 202
+    },
+    {
+      "window_id": 7,
+      "start_time": 15.129311743772242,
+      "end_time": 17.54675338078292,
+      "start_sample": 1512,
+      "end_sample": 1754,
+      "duration_sec": 2.417441637010679,
+      "num_samples": 242
+    },
+    {
+      "window_id": 8,
+      "start_time": 17.54675338078292,
+      "end_time": 20.07663416370107,
+      "start_sample": 1754,
+      "end_sample": 2007,
+      "duration_sec": 2.5298807829181484,
+      "num_samples": 253
+    },
+    {
+      "window_id": 9,
+      "start_time": 20.07663416370107,
+      "end_time": 22.606514946619217,
+      "start_sample": 2007,
+      "end_sample": 2260,
+      "duration_sec": 2.5298807829181484,
+      "num_samples": 253
+    },
+    {
+      "window_id": 10,
+      "start_time": 22.606514946619217,
+      "end_time": 25.023956583629893,
+      "start_sample": 2260,
+      "end_sample": 2502,
+      "duration_sec": 2.4174416370106755,
+      "num_samples": 242
+    },
+    {
+      "window_id": 11,
+      "start_time": 25.023956583629893,
+      "end_time": 27.3289590747331,
+      "start_sample": 2502,
+      "end_sample": 2732,
+      "duration_sec": 2.305002491103206,
+      "num_samples": 230
+    },
+    {
+      "window_id": 12,
+      "start_time": 27.3289590747331,
+      "end_time": 29.577741992882565,
+      "start_sample": 2732,
+      "end_sample": 2957,
+      "duration_sec": 2.248782918149466,
+      "num_samples": 225
+    },
+    {
+      "window_id": 13,
+      "start_time": 29.577741992882565,
+      "end_time": 31.882744483985768,
+      "start_sample": 2957,
+      "end_sample": 3188,
+      "duration_sec": 2.3050024911032025,
+      "num_samples": 231
+    },
+    {
+      "window_id": 14,
+      "start_time": 31.882744483985768,
+      "end_time": 34.35640569395018,
+      "start_sample": 3188,
+      "end_sample": 3435,
+      "duration_sec": 2.473661209964412,
+      "num_samples": 247
+    },
+    {
+      "window_id": 15,
+      "start_time": 34.35640569395018,
+      "end_time": 36.54896903914591,
+      "start_sample": 3435,
+      "end_sample": 3654,
+      "duration_sec": 2.1925633451957296,
+      "num_samples": 219
+    },
+    {
+      "window_id": 16,
+      "start_time": 36.54896903914591,
+      "end_time": 38.85397153024911,
+      "start_sample": 3654,
+      "end_sample": 3885,
+      "duration_sec": 2.3050024911032025,
+      "num_samples": 231
+    },
+    {
+      "window_id": 17,
+      "start_time": 38.91019110320285,
+      "end_time": 41.10275444839858,
+      "start_sample": 3891,
+      "end_sample": 4110,
+      "duration_sec": 2.1925633451957296,
+      "num_samples": 219
+    },
+    {
+      "window_id": 18,
+      "start_time": 41.10275444839858,
+      "end_time": 43.40775693950178,
+      "start_sample": 4110,
+      "end_sample": 4340,
+      "duration_sec": 2.3050024911032025,
+      "num_samples": 230
+    },
+    {
+      "window_id": 19,
+      "start_time": 43.40775693950178,
+      "end_time": 45.76897900355872,
+      "start_sample": 4340,
+      "end_sample": 4576,
+      "duration_sec": 2.361222064056939,
+      "num_samples": 236
+    },
+    {
+      "window_id": 20,
+      "start_time": 45.76897900355872,
+      "end_time": 48.13020106761566,
+      "start_sample": 4576,
+      "end_sample": 4813,
+      "duration_sec": 2.361222064056939,
+      "num_samples": 237
+    },
+    {
+      "window_id": 21,
+      "start_time": 48.13020106761566,
+      "end_time": 50.43520355871886,
+      "start_sample": 4813,
+      "end_sample": 5043,
+      "duration_sec": 2.3050024911032025,
+      "num_samples": 230
+    },
+    {
+      "window_id": 22,
+      "start_time": 50.43520355871886,
+      "end_time": 52.62776690391459,
+      "start_sample": 5043,
+      "end_sample": 5262,
+      "duration_sec": 2.1925633451957296,
+      "num_samples": 219
+    },
+    {
+      "window_id": 23,
+      "start_time": 52.62776690391459,
+      "end_time": 55.10142811387901,
+      "start_sample": 5262,
+      "end_sample": 5510,
+      "duration_sec": 2.473661209964419,
+      "num_samples": 248
+    },
+    {
+      "window_id": 24,
+      "start_time": 55.10142811387901,
+      "end_time": 57.518869750889685,
+      "start_sample": 5510,
+      "end_sample": 5751,
+      "duration_sec": 2.4174416370106755,
+      "num_samples": 241
+    }
+  ]
+}
