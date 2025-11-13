@@ -36,8 +36,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.train.modeling import build_squat_classifier  # noqa: E402
 
-DEFAULT_TFLITE_MODEL = Path("/home/jae/squat_classifier_ssl/exports/squat_classifier_fp16.tflite")
-DEFAULT_KERAS_WEIGHTS = Path("/home/jae/squat_classifier_ssl/checkpoints/squat_classifier_best.weights.h5")
+DEFAULT_TFLITE_MODEL = Path(__file__).resolve().parent.parent / "exports" / "squat_classifier_fp16.tflite"
+DEFAULT_KERAS_WEIGHTS = Path(__file__).resolve().parent.parent / "checkpoints" / "squat_classifier_best.weights.h5"
+
 
 try:
     import tensorflow as tf
