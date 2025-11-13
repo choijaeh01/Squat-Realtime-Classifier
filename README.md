@@ -70,6 +70,7 @@ squat_classifier_ssl/
 ├── scripts/                # 실행 스크립트
 │   ├── realtime_new_pipeline.py  # 실시간 추론 메인 스크립트
 │   └── train_from_config.py      # 설정 파일 기반 학습
+├── notebooks/                # 실험 및 분석용 Jupyter 노트북
 ├── config/                 # 설정 파일
 │   └── training_config.json
 ├── data/                   # 데이터 디렉토리
@@ -87,7 +88,7 @@ squat_classifier_ssl/
 
 ### 요구사항
 
-- Python 3.11+
+- Python 3.x
 - TensorFlow 2.x
 - NumPy, Pandas, Scikit-learn
 - OpenCV (카메라 기능 사용 시)
@@ -98,7 +99,7 @@ squat_classifier_ssl/
 
 1. **저장소 클론**
 ```bash
-git clone https://github.com/yourusername/squat_classifier_ssl.git](https://github.com/choijaeh01/Squat-Realtime-Classifier.git
+git clone https://github.com/choijaeh01/Squat-Realtime-Classifier.git
 cd squat_classifier_ssl
 ```
 
