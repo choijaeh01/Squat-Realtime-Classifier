@@ -4,8 +4,8 @@
 
 1. **모델 및 스케일러 경로 확인**
    ```bash
-   ls -lh /home/jae/squat_classifier_ssl/exports/squat_classifier_fp16.tflite
-   ls -lh /home/jae/squat_classifier_ssl/checkpoints/squat_scaler_18axis.pkl
+   ls -lh squat_classifier_ssl/exports/squat_classifier_fp16.tflite
+   ls -lh squat_classifier_ssl/checkpoints/squat_scaler_18axis.pkl
    ```
 
 2. **ESP32 연결 확인**
