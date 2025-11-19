@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import socket
 import struct
 import subprocess
@@ -74,6 +75,14 @@ CLASS_LABELS_EN = {
     4: "Partial Squat",
 }
 
+OVERLAY_COLORS = {
+    0: (60, 200, 60),
+    1: (0, 165, 255),
+    2: (0, 140, 255),
+    3: (0, 128, 255),
+    4: (60, 180, 255),
+}
+
 
 # -----------------------------------------------------------------------------
 # 유틸리티 함수
@@ -118,7 +127,15 @@ def ensure_esp32_connection(ssid: str = "ESP32_AP", interface: str = "wlan0") ->
     connect = subprocess.run(["sudo", "nmcli", "connection", "up", ssid], text=True, capture_output=True)
     if connect.returncode != 0:
         raise RuntimeError(f"{ssid} 연결 실패: {connect.stderr.strip()}")
-    print(f"[Wi-Fi] {ssid} 연결 성공.")
+        print(f"[Wi-Fi] {ssid} 연결 성공.")
+
+
+def has_picamera2() -> bool:
+    """picamera2 모듈 사용 가능 여부"""
+    try:
+        return importlib.util.find_spec("picamera2") is not None
+    except Exception:
+        return False
 
 
 # -----------------------------------------------------------------------------
@@ -295,11 +312,13 @@ class RepDetector:
         self.bottom_start_t: Optional[float] = None  # Bottom 상태 시작 시간
         self.bottom_timeout_sec = 3.0  # Bottom 상태 최대 유지 시간 (초과 시 리셋)
         
-        # s0_gy 검증 (rep 시작 후 1초 안에 s0_gy가 0.5 이상 증가하지 않으면 rep 취소)
-        self.rep_validation_timeout_sec = 1.0  # rep 검증 타임아웃 (1초)
+        # s0_gy 검증 (조금 더 완화: 1.2초 안에 0.4 이상 증가)
+        self.rep_validation_timeout_sec = 1.2  # rep 검증 타임아웃
         self.s0_gy_at_rep_start: Optional[float] = None  # rep 시작 시점의 s0_gy 값
         self.s0_gy_max_in_validation: float = 0.0  # 검증 기간 동안의 s0_gy 최댓값
+        self.s0_gy_min_in_validation: float = 0.0  # 검증 기간 동안의 s0_gy 최솟값
         self.rep_validated = False  # rep이 검증되었는지 여부
+        self.pending_rep_id: Optional[int] = None  # 진행 중인 rep 번호 (검증 전 포함)
 
     def _lowpass_filter_gz(self, gz: float) -> float:
         """
@@ -347,14 +366,16 @@ class RepDetector:
         # rep 시작 시점의 s0_gy 값 저장 (첫 번째 값)
         if self.s0_gy_at_rep_start is None:
             self.s0_gy_at_rep_start = s0_gy
-        
+
         # 검증 기간 동안 s0_gy 최댓값 추적
         s0_gy_increase = s0_gy - self.s0_gy_at_rep_start
         if s0_gy_increase > self.s0_gy_max_in_validation:
             self.s0_gy_max_in_validation = s0_gy_increase
-        
-        # s0_gy가 0.5 이상 증가했으면 rep 검증 완료
-        if self.s0_gy_max_in_validation >= 0.5:
+        if s0_gy_increase < self.s0_gy_min_in_validation:
+            self.s0_gy_min_in_validation = s0_gy_increase
+
+        delta_threshold = 0.4
+        if self.s0_gy_max_in_validation >= delta_threshold or abs(self.s0_gy_min_in_validation) >= delta_threshold:
             self.rep_validated = True
         
         return True
@@ -395,9 +416,11 @@ class RepDetector:
                 self.has_zero_cross = False
                 self.has_peak = False
                 self.max_descent_gz = abs(gz)  # 하강 시작 시 초기 최댓값 설정
+                self.pending_rep_id = self.rep_id + 1
                 # s0_gy 검증 초기화
                 self.s0_gy_at_rep_start = None  # 아직 s0_gy 값을 받지 않음
                 self.s0_gy_max_in_validation = 0.0
+                self.s0_gy_min_in_validation = 0.0
                 self.rep_validated = False
             elif gz < self.gz_negative_threshold:
                 # 각속도가 음수로 바로 가는 경우는 무시 (노이즈, 정상적인 패턴이 아님)
@@ -487,12 +510,15 @@ class RepDetector:
         # s0_gy 검증 관련 변수 리셋
         self.s0_gy_at_rep_start = None
         self.s0_gy_max_in_validation = 0.0
+        self.s0_gy_min_in_validation = 0.0
         self.rep_validated = False
+        self.pending_rep_id = None
 
     def _finalize_rep(self, end_t: float) -> dict:
         """rep 종료 및 레코드 생성"""
         # rep 완료 시에만 rep_id 증가 (검증 실패로 취소된 rep은 rep_id가 증가하지 않음)
         self.rep_id += 1
+        self.pending_rep_id = None
         rep_label = max(self.rep_class_counts.items(), key=lambda x: x[1])[0]
         rep_confidence = max(self.rep_class_counts.values()) / sum(self.rep_class_counts.values())
         rep_record = {
@@ -537,6 +563,7 @@ class CameraWorker:
         use_picamera2: bool = True,
         rotate_deg: int = 0,
         draw_landmarks: bool = True,
+        show_class_overlay: bool = True,
     ):
         self.model_path = Path(model_path)
         self.threshold = float(classification_threshold)
@@ -547,12 +574,15 @@ class CameraWorker:
         self.display_enabled = False
         self.rotate_deg = int(rotate_deg) % 360
         self.draw_landmarks = bool(draw_landmarks)
+        self.show_class_overlay = bool(show_class_overlay)
 
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
-        self._overlay_text = "Initializing..."
-        self._overlay_color = (0, 0, 255)
+        self._sensor_overlay_text = "Initializing..."
+        self._sensor_overlay_color = (0, 0, 255)
+        self._camera_overlay_text = ""
+        self._camera_overlay_color = (0, 0, 255)
         self._person_present = False
         self._last_is_bad = False
         self._last_cam_label = "NoPerson"
@@ -572,9 +602,10 @@ class CameraWorker:
             self._thread.join(timeout=2.0)
 
     def set_overlay(self, text: str, color: tuple[int, int, int]) -> None:
+        """센서(상단) 오버레이 텍스트 설정"""
         with self._lock:
-            self._overlay_text = text
-            self._overlay_color = tuple(int(c) for c in color)
+            self._sensor_overlay_text = text
+            self._sensor_overlay_color = tuple(int(c) for c in color)
 
     def get_camera_state(self) -> tuple[bool, bool, str]:
         """returns (person_present, is_bad, cam_label_en)"""
@@ -615,6 +646,20 @@ class CameraWorker:
             mp_drawing = mp.solutions.drawing_utils
         except Exception:
             return
+
+        def calculate_angle(a, b, c):
+            a = np.asarray(a)
+            b = np.asarray(b)
+            c = np.asarray(c)
+            radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+            angle = np.abs(radians * 180.0 / np.pi)
+            if angle > 180.0:
+                angle = 360.0 - angle
+            return angle
+
+        def calculate_torso_angle(mid_shoulder, mid_hip):
+            vertical_point = [mid_hip[0], mid_hip[1] - 100]
+            return calculate_angle(mid_shoulder, mid_hip, vertical_point)
 
         interpreter = None
         input_details = None
@@ -698,6 +743,7 @@ class CameraWorker:
         try:
             while not self._stop.is_set():
                 frame_bgr = None
+                frame_from_picam = False
                 if use_picam2:
                     try:
                         if picam2 is not None:
@@ -707,8 +753,7 @@ class CameraWorker:
                                 if frame_bgr.shape[2] == 4:
                                     frame_bgr = cv2.cvtColor(frame_bgr, cv2.COLOR_BGRA2BGR)
                                 elif frame_bgr.shape[2] == 3:
-                                    # 이미 BGR 형식
-                                    pass
+                                    frame_from_picam = True
                     except Exception as e:
                         # 버퍼 큐잉 에러는 무시하고 계속 시도
                         # 에러 메시지는 출력하지 않음 (너무 많이 출력됨)
@@ -726,6 +771,8 @@ class CameraWorker:
                 if frame_bgr is None:
                     time.sleep(0.005)
                     continue
+                if frame_from_picam and frame_bgr.shape[2] == 3:
+                    frame_bgr = cv2.cvtColor(frame_bgr, cv2.COLOR_RGB2BGR)
 
                 ts = time.time()
                 if self.rotate_deg == 90:
@@ -739,6 +786,8 @@ class CameraWorker:
                 results = pose.process(image_rgb)
 
                 avg_knee_angle = -1.0
+                avg_ankle_angle = -1.0
+                torso_angle = -1.0
                 detected = bool(results.pose_landmarks)
                 if detected:
                     try:
@@ -818,87 +867,135 @@ class CameraWorker:
                     except Exception:
                         pass
 
+                sensor_text = ""
+                sensor_color = (255, 255, 255)
+                camera_text = ""
+                camera_color = (255, 255, 255)
                 with self._lock:
                     self._person_present = detected
                     if not detected:
                         self._last_cam_label = "NoPerson"
-                    text = self._overlay_text
-                    color = self._overlay_color
-                    self._frame_buf.append((ts, frame_bgr.copy()))
+                        self._last_cam_score = 0.0
+                    cam_label = self._last_cam_label
+                    cam_score = self._last_cam_score
+                    camera_lines: list[str] = []
+                    if self.show_class_overlay:
+                        if cam_label == "NoPerson":
+                            camera_lines.append("Camera: No Person")
+                        else:
+                            label_text = cam_label
+                            if cam_score > 0:
+                                label_text += f" ({cam_score * 100:.0f}%)"
+                            camera_lines.append(f"Camera: {label_text}")
+                    if avg_knee_angle >= 0:
+                        camera_lines.append(f"Knee: {avg_knee_angle:.1f} deg")
+                    else:
+                        camera_lines.append("Knee: -- deg")
+                    if torso_angle >= 0:
+                        camera_lines.append(f"Torso: {torso_angle:.1f} deg")
+                    else:
+                        camera_lines.append("Torso: -- deg")
+                    if avg_ankle_angle >= 0:
+                        camera_lines.append(f"Ankle: {avg_ankle_angle:.1f} deg")
+                    else:
+                        camera_lines.append("Ankle: -- deg")
+                    self._camera_overlay_text = "\n".join(camera_lines)
+                    self._camera_overlay_color = (255, 255, 255)
+                    sensor_text = self._sensor_overlay_text
+                    sensor_color = self._sensor_overlay_color
+                    camera_text = self._camera_overlay_text
+                    camera_color = self._camera_overlay_color
 
-                try:
-                    # DISPLAY 환경 변수 확인 및 설정
-                    display_available = bool(os.environ.get("DISPLAY"))
-                    if not display_available:
-                        # SSH 세션에서 X11 포워딩 시도
-                        try:
-                            # 여러 DISPLAY 값 시도
-                            for disp_val in [":0", ":10.0", "localhost:10.0"]:
-                                try:
-                                    os.environ["DISPLAY"] = disp_val
-                                    # 테스트로 간단한 창 열기 시도
-                                    test_img = np.zeros((100, 100, 3), dtype=np.uint8)
-                                    cv2.imshow("test", test_img)
-                                    cv2.waitKey(1)
-                                    cv2.destroyAllWindows()
-                                    display_available = True
-                                    print(f"[Camera] DISPLAY set to {disp_val}")
-                                    break
-                                except Exception:
-                                    continue
-                        except Exception as e:
-                            if self.display_enabled:
-                                print(f"[Camera] DISPLAY setup failed: {e}")
-                    
-                    if self.display_enabled and display_available:
-                        lines = str(text).splitlines()
-                        if lines:
-                            # 메인 텍스트 (상단)
-                            y = 40
-                            for i, line in enumerate(lines):
-                                if not line:
-                                    y += 30
-                                    continue
-                                # 마지막 줄이 "Camera:"로 시작하면 파란색으로 하단에 표시
-                                if i == len(lines) - 1 and line.startswith("Camera:"):
-                                    cv2.putText(frame_bgr, line, (30, frame_bgr.shape[0] - 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 3, cv2.LINE_AA)
-                                else:
-                                    cv2.putText(frame_bgr, line, (30, y), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3, cv2.LINE_AA)
-                                    y += 34
-                        cv2.imshow("Squat Camera (q to quit)", frame_bgr)
-                        key = cv2.waitKey(1) & 0xFF
-                        if key == ord("q"):
-                            break
-                        if key == ord("s"):
-                            self.start_event.set()
-                        if key == ord("r") and self._last_clip_path:
-                            cap2 = cv2.VideoCapture(str(self._last_clip_path))
-                            if cap2.isOpened():
-                                # 0.5배속 재생 (원래 fps의 절반 속도)
-                                fps = cap2.get(cv2.CAP_PROP_FPS)
-                                frame_delay = int(1000 / (fps * 0.5))  # 0.5배속
-                                while True:
-                                    ok2, fr2 = cap2.read()
-                                    if not ok2:
-                                        break
-                                    cv2.imshow("Replay (0.5x speed, q=quit/esc)", fr2)
-                                    k2 = cv2.waitKey(frame_delay) & 0xFF
-                                    if k2 in (27, ord("q"), ord(" ")):
-                                        break
-                                cap2.release()
-                    elif self.display_enabled and not display_available:
-                        # DISPLAY가 없어도 카메라는 작동하도록 (헤드리스 모드)
-                        pass
-                except Exception as e:
-                    # 에러가 발생해도 카메라 스레드는 계속 실행
-                    if self.display_enabled:
-                        print(f"[Camera] Display error (continuing): {e}")
-                    pass
+                frame_overlay = frame_bgr.copy()
+                sensor_lines = [line for line in str(sensor_text).splitlines() if line]
+                if sensor_lines:
+                    y = 40
+                    for line in sensor_lines:
+                        cv2.putText(
+                            frame_overlay,
+                            line,
+                            (30, y),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            sensor_color,
+                            3,
+                            cv2.LINE_AA,
+                        )
+                        y += 34
+
+                camera_lines = [line for line in str(camera_text).splitlines() if line]
+                if camera_lines:
+                    h, w = frame_overlay.shape[:2]
+                    y_bottom = h - 40
+                    for line in reversed(camera_lines):
+                        (text_w, _), _ = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 3)
+                        x = max(30, w - text_w - 30)
+                        cv2.putText(
+                            frame_overlay,
+                            line,
+                            (x, y_bottom),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            camera_color,
+                            3,
+                            cv2.LINE_AA,
+                        )
+                        y_bottom -= 34
 
                 with self._lock:
                     maxlen = max(1, int(self.buffer_seconds * 30))
                     if self._frame_buf.maxlen != maxlen:
                         self._frame_buf = deque(self._frame_buf, maxlen=maxlen)
+                    self._frame_buf.append((ts, frame_overlay.copy()))
+
+                display_available = True
+                try:
+                    if self.display_enabled:
+                        display_available = bool(os.environ.get("DISPLAY"))
+                        if not display_available:
+                            try:
+                                for disp_val in [":0", ":10.0", "localhost:10.0"]:
+                                    try:
+                                        os.environ["DISPLAY"] = disp_val
+                                        test_img = np.zeros((100, 100, 3), dtype=np.uint8)
+                                        cv2.imshow("test", test_img)
+                                        cv2.waitKey(1)
+                                        cv2.destroyAllWindows()
+                                        display_available = True
+                                        print(f"[Camera] DISPLAY set to {disp_val}")
+                                        break
+                                    except Exception:
+                                        continue
+                            except Exception as e:
+                                print(f"[Camera] DISPLAY setup failed: {e}")
+
+                        if display_available:
+                            frame_to_show = frame_overlay
+                            if frame_from_picam:
+                                frame_to_show = cv2.cvtColor(frame_overlay, cv2.COLOR_BGR2RGB)
+                            cv2.imshow("Squat Camera (q to quit)", frame_to_show)
+                            key = cv2.waitKey(1) & 0xFF
+                            if key == ord("q"):
+                                break
+                            if key == ord("s"):
+                                self.start_event.set()
+                            if key == ord("r") and self._last_clip_path:
+                                cap2 = cv2.VideoCapture(str(self._last_clip_path))
+                                if cap2.isOpened():
+                                    fps = cap2.get(cv2.CAP_PROP_FPS)
+                                    frame_delay = int(1000 / (fps * 0.5)) if fps > 0 else 33
+                                    while True:
+                                        ok2, fr2 = cap2.read()
+                                        if not ok2:
+                                            break
+                                        cv2.imshow("Replay (0.5x speed, q=quit/esc)", fr2)
+                                        k2 = cv2.waitKey(frame_delay) & 0xFF
+                                        if k2 in (27, ord("q"), ord(" ")):
+                                            break
+                                    cap2.release()
+                except Exception as e:
+                    if self.display_enabled:
+                        print(f"[Camera] Display error (continuing): {e}")
 
         finally:
             try:
@@ -925,6 +1022,7 @@ class CameraWorker:
 class RealTimeClassifier:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
+        self.camera_only_requested = bool(getattr(args, "camera_only", False))
         self.scaler = joblib.load(args.scaler)
         self.backend = InferenceBackend(
             window_size=args.window_size,
@@ -971,6 +1069,9 @@ class RealTimeClassifier:
         self._last_logged_rep_id = 0  # 마지막으로 출력한 rep_id 추적
         self._last_rep_info: Optional[dict] = None  # 마지막 완료된 rep 정보 (카메라 오버레이용)
         self._current_rep_id: Optional[int] = None  # 현재 진행 중인 rep_id (카메라 오버레이용)
+        self._cancel_overlay_active: bool = False
+        self._last_canceled_rep: Optional[int] = None
+        self._last_canceled_rep: Optional[int] = None
         # 그래프 저장용 데이터
         self.sample_times: list[float] = []
         self.series_s1_gz: list[float] = []  # s1 각속도 Z축 (rep 감지용)
@@ -992,12 +1093,62 @@ class RealTimeClassifier:
                     use_picamera2=args.camera_use_picamera2,
                     rotate_deg=args.camera_rotate,
                     draw_landmarks=args.camera_draw_landmarks,
+                    show_class_overlay=args.camera_show_class,
                 )
                 self.camera.display_enabled = bool(args.camera_display)
                 self.camera._session_id = self.session_id
                 self.camera.start()
             except Exception as exc:
                 print(f"[Camera] 카메라 초기화 실패: {exc}")
+                self.camera = None
+
+    def _class_to_overlay_color(self, class_id: Optional[int]) -> tuple[int, int, int]:
+        if class_id is None:
+            return (255, 255, 255)
+        return OVERLAY_COLORS.get(int(class_id), (255, 255, 255))
+
+    def _wait_for_start_signal(self) -> None:
+        if not self.args.wait_for_start:
+            print("📡 스트림 수신을 즉시 시작합니다...\n")
+            return
+
+        print("\n✅ 시작 대기: 콘솔에서 Enter 또는 카메라 창에서 'S'를 누르세요.")
+        if self.camera is not None:
+            try:
+                self.camera.set_overlay("Press S to start (또는 콘솔 Enter)", (255, 255, 0))
+            except Exception:
+                pass
+
+        started = False
+        while not started:
+            if self.camera is not None and self.camera.start_event.is_set():
+                started = True
+                break
+            try:
+                rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if rlist:
+                    _ = sys.stdin.readline()
+                    started = True
+                    break
+            except Exception:
+                time.sleep(0.1)
+        print("📡 스트림 수신을 시작합니다...\n")
+
+    def _run_camera_only_mode(self, skip_wait: bool, reason: str) -> None:
+        if self.camera is None:
+            raise RuntimeError("Camera-only mode를 사용하려면 --enable-camera 옵션이 필요합니다.")
+        if not skip_wait:
+            self._wait_for_start_signal()
+        try:
+            self.camera.set_overlay(f"Camera-only mode\n{reason}", (255, 255, 0))
+        except Exception:
+            pass
+        print(f"🎥 Camera-only mode 활성화 ({reason}). Ctrl+C로 종료하세요.")
+        try:
+            while True:
+                time.sleep(0.2)
+        except KeyboardInterrupt:
+            print("\n🛑 Camera-only 모드를 종료합니다.")
 
     def _prepare_window(self, window: np.ndarray) -> np.ndarray:
         """전처리: scaler → per-window Z-score → ±6σ 클리핑"""
@@ -1093,39 +1244,12 @@ class RealTimeClassifier:
             "entropy": h,
             "probs": probs.tolist(),
             "is_transition": is_transition,
-            "rep_id": self.rep_detector.rep_id if self.rep_detector.rep_start_t is not None else None,
+            "rep_id": self.rep_detector.pending_rep_id if self.rep_detector.rep_start_t is not None else None,
         }
         return window_record, rep_record
 
     def run(self) -> None:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((self.args.host, self.args.port))
-        sock.settimeout(1.0)
-
-        if self.args.wait_for_start:
-            print("\n✅ 시작 대기: 콘솔에서 Enter 또는 카메라 창에서 'S'를 누르세요.")
-            if self.camera is not None:
-                try:
-                    self.camera.set_overlay("Press S to start (또는 콘솔 Enter)", (255, 255, 0))
-                except Exception:
-                    pass
-            started = False
-            while not started:
-                if self.camera is not None and self.camera.start_event.is_set():
-                    started = True
-                    break
-                try:
-                    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if rlist:
-                        _ = sys.stdin.readline()
-                        started = True
-                        break
-                except Exception:
-                    time.sleep(0.1)
-            print("📡 스트림 수신을 시작합니다...\n")
-        else:
-            print("📡 스트림 수신을 즉시 시작합니다...\n")
-
+        sock: Optional[socket.socket] = None
         start_ts = time.time()
         self.session_start_ts = start_ts  # 그래프 저장용
         missed_packets = 0
@@ -1133,6 +1257,18 @@ class RealTimeClassifier:
         self._last_infer_step = -self.stride_samples
         _last_status_ts = start_ts
         _first_packet_received = False
+
+        if self.camera_only_requested:
+            if self.camera is None:
+                raise RuntimeError("Camera-only mode를 사용하려면 --enable-camera 옵션과 카메라가 필요합니다.")
+            self._run_camera_only_mode(skip_wait=False, reason="Sensor disabled")
+            return
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((self.args.host, self.args.port))
+        sock.settimeout(1.0)
+
+        self._wait_for_start_signal()
 
         try:
             while True:
@@ -1144,6 +1280,18 @@ class RealTimeClassifier:
                     if now - _last_status_ts >= 2.0:
                         if not _first_packet_received:
                             print(f"[대기] 패킷 수신 대기 중... (포트 {self.args.port}, 호스트 {self.args.host})")
+                            fallback_timeout = getattr(self.args, "camera_fallback_timeout", 0.0)
+                            if (
+                                fallback_timeout
+                                and self.camera is not None
+                                and (now - start_ts) >= fallback_timeout
+                            ):
+                                print(
+                                    f"\n⚠️ {fallback_timeout:.0f}초 동안 센서 패킷이 수신되지 않았습니다. "
+                                    "카메라 전용 모드로 전환합니다."
+                                )
+                                self._run_camera_only_mode(skip_wait=True, reason="Sensor timeout")
+                                return
                         else:
                             elapsed = now - start_ts
                             hz = self.global_step / elapsed if elapsed > 0 else 0.0
@@ -1188,9 +1336,15 @@ class RealTimeClassifier:
                 
                 # rep 검증 실패 시 rep 취소
                 if not is_rep_valid and self.rep_detector.state != self.rep_detector.STATE_IDLE:
-                    print(f"\n⚠️ Rep #{self.rep_detector.rep_id} 취소: s0_gy 검증 실패 (1초 내 0.5 이상 증가 없음)")
+                    cancel_rep_id = self.rep_detector.pending_rep_id or (self.rep_detector.rep_id + 1)
+                    print(f"\n⚠️ Rep #{cancel_rep_id} 취소: s0_gy 검증 실패 (임계값 미만)")
                     self.rep_detector._reset_state()
                     self.rep_samples.clear()
+                    self._current_rep_id = None
+                    self._last_canceled_rep = cancel_rep_id
+                    self._cancel_overlay_active = True
+                    if self.camera is not None:
+                        self.camera.set_overlay(f"Rep {cancel_rep_id}: Canceled. Please retry.", (0, 0, 255))
                 
                 # 기록 (그래프용)
                 self.series_s1_gz.append(filtered_gz)
@@ -1259,6 +1413,8 @@ class RealTimeClassifier:
                         
                         # 현재 rep_id 업데이트 (카메라 오버레이용)
                         if is_rep_active:
+                            self._cancel_overlay_active = False
+                            self._last_canceled_rep = None
                             self._current_rep_id = window_record.get("rep_id")
                         elif not is_rep_active:
                             self._current_rep_id = None
@@ -1296,10 +1452,13 @@ class RealTimeClassifier:
                                 if rep_label == 4 or new_rep.get("resampled_label") == 4:
                                     final_label = 4  # Partial Squat
                                 
+                                final_label_name = CLASS_LABELS_EN.get(final_label, f"Class {final_label}")
                                 self._last_rep_info = {
                                     "rep_id": rep_id,
                                     "resampled_label": new_rep.get("resampled_label"),
                                     "final_label": final_label,  # Partial Squat 체크 포함
+                                    "label_text": final_label_name,
+                                    "color": self._class_to_overlay_color(final_label),
                                 }
                         
                         # rep 완료 시에만 rep 수 출력 및 리샘플링 추론
@@ -1335,53 +1494,44 @@ class RealTimeClassifier:
                             if rep_label == 4 or rep_record.get("resampled_label") == 4:
                                 final_label = 4  # Partial Squat
                             
+                            final_label_name = CLASS_LABELS_EN.get(final_label, f"Class {final_label}")
                             self._last_rep_info = {
                                 "rep_id": rep_id,
                                 "resampled_label": rep_record.get("resampled_label"),
                                 "final_label": final_label,  # Partial Squat 체크 포함
+                                "label_text": final_label_name,
+                                "color": self._class_to_overlay_color(final_label),
                             }
                             
                             # rep 샘플 버퍼 초기화
                             self.rep_samples.clear()
 
-                        # 카메라 오버레이
+                        # 카메라/센서 오버레이
                         if self.camera is not None:
-                            # 카메라 분류 결과 가져오기
-                            _, _, cam_label = self.camera.get_camera_state()
-                            
-                            overlay_lines = []
-                            
-                            # rep 진행 중일 때만 현재 동작과 분류 표시
-                            if self._current_rep_id is not None:
-                                # 현재 상태 (Descent, Bottom, Ascent)
-                                current_state = self.rep_detector.state
-                                # 현재 분류 결과
-                                current_pose = "Keep going" if original_class == 4 else CLASS_LABELS_EN.get(fused_class, f"Class {fused_class}")
-                                # 상태: 분류 형식으로 표시
-                                overlay_lines.append(f"{current_state}: {current_pose}")
-                                overlay_lines.append(f"{self._current_rep_id}rep: ...")
-                            # rep 완료 후 결과 표시
-                            elif self._last_rep_info is not None:
-                                rep_id = self._last_rep_info.get("rep_id", 0)
-                                final_label = self._last_rep_info.get("final_label")
-                                if final_label is not None:
-                                    # Partial Squat 체크 포함된 최종 라벨
-                                    rep_label_text = CLASS_LABELS_EN.get(final_label, f"Class {final_label}")
-                                    overlay_lines.append(f"{rep_id}rep: {rep_label_text}")
-                            
-                            # 카메라 분류 결과를 파란색으로 하단에 표시
-                            if cam_label and cam_label != "NoPerson":
-                                overlay_lines.append(f"Camera: {cam_label}")
-                            
-                            overlay_text = "\n".join(overlay_lines) if overlay_lines else ""
-                            
-                            # 색상 결정: rep 진행 중이거나 완료된 경우에만 색상 적용
-                            if self._current_rep_id is not None or (self._last_rep_info is not None and overlay_text):
-                                overlay_color = (0, 255, 0) if (fused_class == 0 and original_class != 4) else (0, 0, 255)
+                            sensor_lines: list[str] = []
+                            overlay_color = (255, 255, 255)
+                            if self._cancel_overlay_active and self._last_canceled_rep is not None:
+                                sensor_lines.append(f"Rep {self._last_canceled_rep}: Canceled. Please retry.")
+                                overlay_color = (0, 0, 255)
                             else:
-                                overlay_color = (255, 255, 255)  # 기본 색상
-                            
-                            self.camera.set_overlay(overlay_text, overlay_color)
+                                sensor_lines.append(f"State: {self.rep_detector.state}")
+                                if self._current_rep_id is not None:
+                                    status_text = "active" if self.rep_detector.rep_validated else "pending"
+                                    sensor_lines.append(f"Rep {self._current_rep_id}: {status_text}")
+                                    if self.rep_detector.rep_validated:
+                                        current_pose = CLASS_LABELS_EN.get(fused_class, f"Class {fused_class}")
+                                        if original_class == 4:
+                                            current_pose = "Keep going"
+                                        sensor_lines.append(f"Now: {current_pose}")
+                                    overlay_color = self._class_to_overlay_color(original_class if original_class == 4 else fused_class)
+                                elif self._last_rep_info is not None:
+                                    rep_id = self._last_rep_info.get("rep_id", 0)
+                                    rep_label_text = self._last_rep_info.get("label_text")
+                                    if rep_label_text:
+                                        sensor_lines.append(f"Rep {rep_id}: {rep_label_text}")
+                                    overlay_color = self._last_rep_info.get("color", overlay_color)
+                            sensor_text = "\n".join(sensor_lines)
+                            self.camera.set_overlay(sensor_text, overlay_color)
 
                         # 창-레벨 레코드 저장
                         self.window_records.append({
@@ -1414,7 +1564,8 @@ class RealTimeClassifier:
         except KeyboardInterrupt:
             print("\n🛑 사용자 중단: 소켓 종료")
         finally:
-            sock.close()
+            if sock is not None:
+                sock.close()
             elapsed = time.time() - start_ts
             hz = self.global_step / elapsed if elapsed > 0 else 0.0
             print("\n" + "=" * 72)
@@ -1435,11 +1586,16 @@ class RealTimeClassifier:
                 self.camera.stop()
 
     def _save_plot(self) -> None:
-        """세션 종료 시 그래프 저장 (s0_az + per-window confidence)"""
+        """세션 종료 시 그래프 저장 (s1_gz + class timeline)"""
         if not self.sample_times:
             print("No samples recorded; plot skipped.")
             return
         try:
+            import matplotlib
+            try:
+                matplotlib.use("Agg")
+            except Exception:
+                pass
             import matplotlib.pyplot as plt
         except ModuleNotFoundError:
             print("matplotlib is not installed; skipping plot generation.")
@@ -1454,7 +1610,15 @@ class RealTimeClassifier:
         except Exception:
             plt.style.use("seaborn")
 
-        fig, (ax_gz, ax_energy, ax_conf) = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
+        fig, (ax_gz, ax_cls) = plt.subplots(2, 1, figsize=(14, 9), sharex=True)
+
+        CLASS_COLORS = {
+            0: "#2ecc71",
+            1: "#e67e22",
+            2: "#c0392b",
+            3: "#f1c40f",
+            4: "#3498db",
+        }
 
         # s1_gz (각속도 Z축) + rep 상태 구분
         ax_gz.plot(self.sample_times, self.series_s1_gz, label="s1_gz (filtered)", color="#e74c3c", linewidth=1.5)
@@ -1496,79 +1660,74 @@ class RealTimeClassifier:
         ax_gz.grid(True, axis="x", alpha=0.2)
         ax_gz.legend(loc="upper right", fontsize=8)
 
-        # 에너지 (각 센서의 ax, ay, az 기반)
-        ax_energy.plot(self.sample_times, self.series_energy_s0, label="s0 Energy", color="#e74c3c", linewidth=1.2)
-        ax_energy.plot(self.sample_times, self.series_energy_s1, label="s1 Energy", color="#3498db", linewidth=1.2)
-        ax_energy.plot(self.sample_times, self.series_energy_s2, label="s2 Energy", color="#2ecc71", linewidth=1.2)
-        ax_energy.set_ylabel("Energy (m/s²)")
-        ax_energy.set_title("Acceleration Energy (sqrt(ax²+ay²+az²))", fontsize=12)
-        ax_energy.grid(True, axis="x", alpha=0.2)
-        ax_energy.legend(loc="upper right", fontsize=8)
-
-        # Confidence per window as scatter at window midpoints
-        CLASS_COLORS = {
-            0: "#2ecc71",
-            1: "#e67e22",
-            2: "#c0392b",
-            3: "#f1c40f",
-            4: "#3498db",
-        }
-        conf_times = []
-        conf_values = []
-        conf_colors = []
+        # 윈도우 기반 클래스 타임라인 + rep 최종 라벨
+        window_times = []
+        window_classes = []
+        window_colors = []
         for record in self.window_records:
             start = float(record["start_sec"])
             end = float(record["end_sec"])
             mid = (start + end) / 2.0
-            conf = float(record["confidence"])
             cls = int(record["class_id"])
-            conf_times.append(mid)
-            conf_values.append(conf)
-            conf_colors.append(CLASS_COLORS.get(cls, "#7f8c8d"))
-            color = CLASS_COLORS.get(cls, "#7f8c8d")
-            label = CLASS_LABELS_EN.get(cls, f"Class {cls}")
-            ax_conf.axvspan(start, end, color=color, alpha=0.1)
-            ax_conf.text(
-                mid,
-                1.02,
-                label if cls != 4 else "Keep going",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                color=color,
-                rotation=90,
-                transform=ax_conf.get_xaxis_transform(),
-            )
-        ax_conf.scatter(conf_times, conf_values, s=18, c=conf_colors, label="confidence")
-        ax_conf.set_ylim(0.0, 1.05)
-        ax_conf.set_xlabel("Time (s)")
-        ax_conf.set_ylabel("Confidence")
-        ax_conf.set_title("Per-window confidence (with Class Labels)", fontsize=12)
-        ax_conf.grid(True, axis="x", alpha=0.2)
-        ax_conf.legend(loc="upper right", fontsize=8)
-        
-        # Rep 구간 표시 (rep 레코드 기반) - CLASS_COLORS 정의 후
-        if hasattr(self, 'session_start_ts') and len(self.sample_times) > 0:
-            for i, rep_record in enumerate(self.rep_detector.rep_records):
-                rep_start_abs = rep_record["start_t"]
-                rep_end_abs = rep_record["end_t"]
-                # 절대 시간을 상대 시간으로 변환
-                rep_start_rel = rep_start_abs - self.session_start_ts
-                rep_end_rel = rep_end_abs - self.session_start_ts
-                rep_label = rep_record.get("label", 0)
-                rep_color = CLASS_COLORS.get(rep_label, "#f1c40f")
-                ax_gz.axvspan(rep_start_rel, rep_end_rel, color=rep_color, alpha=0.25, edgecolor="black", linewidth=1.5, label=f"Rep #{rep_record.get('rep_id', i+1)}" if i == 0 else "")
-                # rep 라벨 표시
-                rep_mid = (rep_start_rel + rep_end_rel) / 2
+            window_times.append(mid)
+            window_classes.append(cls)
+            window_colors.append(CLASS_COLORS.get(cls, "#7f8c8d"))
+        if window_times:
+            ax_cls.scatter(window_times, window_classes, c=window_colors, s=12, alpha=0.8, label="Window class")
+
+        if hasattr(self, "session_start_ts"):
+            for rep_record in self.rep_detector.rep_records:
+                rep_start_rel = rep_record["start_t"] - self.session_start_ts
+                rep_end_rel = rep_record["end_t"] - self.session_start_ts
+                resampled_label = rep_record.get("resampled_label")
+                base_label = rep_record.get("label", 0)
+                final_label = resampled_label if resampled_label is not None else base_label
+                if base_label == 4 or resampled_label == 4:
+                    final_label = 4
+                rep_color = CLASS_COLORS.get(final_label, "#7f8c8d")
+                ax_gz.axvspan(rep_start_rel, rep_end_rel, color=rep_color, alpha=0.2)
+                ax_cls.axvspan(rep_start_rel, rep_end_rel, color=rep_color, alpha=0.25)
+                rep_mid = (rep_start_rel + rep_end_rel) / 2.0
                 y_max = ax_gz.get_ylim()[1]
-                ax_gz.text(rep_mid, y_max * 0.9, f"Rep #{rep_record.get('rep_id', i+1)}", 
-                           ha="center", va="top", fontsize=9, fontweight="bold", 
-                           bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+                ax_gz.text(
+                    rep_mid,
+                    y_max * 0.85,
+                    f"Rep {rep_record.get('rep_id', 0)}",
+                    ha="center",
+                    va="top",
+                    fontsize=9,
+                    fontweight="bold",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+                )
+                rep_number = rep_record.get("rep_id", 0)
+                final_label_name = CLASS_LABELS_EN.get(final_label, f"Class {final_label}")
+                ax_cls.text(
+                    rep_mid,
+                    final_label,
+                    f"Rep {rep_number}: {final_label_name}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    fontweight="bold",
+                    color="black",
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7),
+                )
+        ax_cls.set_yticks(list(CLASS_LABELS_EN.keys()))
+        ax_cls.set_yticklabels([CLASS_LABELS_EN[idx] for idx in CLASS_LABELS_EN.keys()])
+        ax_cls.set_ylim(-0.5, len(CLASS_LABELS_EN) - 0.5)
+        ax_cls.set_xlabel("Time (s)")
+        ax_cls.set_ylabel("Class")
+        ax_cls.set_title("Window predictions and final rep labels", fontsize=12)
+        ax_cls.grid(True, axis="x", alpha=0.2)
 
         plt.tight_layout()
-        fig.savefig(output_path, dpi=150)
-        plt.close(fig)
-        print(f"Saved session plot to {output_path}")
+        try:
+            fig.savefig(output_path, dpi=150)
+            print(f"Saved session plot to {output_path}")
+        except Exception as exc:
+            print(f"Failed to save plot: {exc}")
+        finally:
+            plt.close(fig)
 
 
 # -----------------------------------------------------------------------------
@@ -1606,14 +1765,36 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--clip-sigma", type=float, default=6.0, help="±6σ 클리핑 값")
     # 카메라
     parser.add_argument("--enable-camera", action="store_true", help="카메라 기반 Good/Bad 보조 분류")
-    parser.add_argument("--camera-model", type=Path, default=Path("/home/jae/squat_camera/squat_model/squat_model.tflite"))
+    parser.add_argument(
+        "--camera-model",
+        type=Path,
+        default=Path(__file__).parent.parent.parent / "squat_camera" / "squat_model" / "squat_model.tflite",
+    )
     parser.add_argument("--camera-threshold", type=float, default=0.7)
     parser.add_argument("--camera-width", type=int, default=640)
     parser.add_argument("--camera-height", type=int, default=360)
-    parser.add_argument("--camera-use-picamera2", action="store_true")
+    parser.add_argument(
+        "--camera-use-picamera2",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Picamera2 백엔드를 사용합니다. (미지정 시 자동 감지, --no-camera-use-picamera2로 비활성화)",
+    )
+    parser.add_argument(
+        "--camera-show-class",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="카메라 기반 정/오자세 텍스트를 오버레이에 표시합니다.",
+    )
     parser.add_argument("--camera-rotate", type=int, choices=[0, 90, 180, 270], default=90)
     parser.add_argument("--camera-display", action="store_true", help="카메라 창 표시")
     parser.add_argument("--no-camera-draw-landmarks", action="store_false", dest="camera_draw_landmarks", default=True)
+    parser.add_argument("--camera-only", action="store_true", help="센서 없이 카메라만 사용")
+    parser.add_argument(
+        "--camera-fallback-timeout",
+        type=float,
+        default=15.0,
+        help="센서 패킷이 지정한 시간 동안 수신되지 않으면 카메라 전용 모드로 전환 (0은 비활성화)",
+    )
     parser.add_argument("--clip-buffer-sec", type=float, default=12.0, help="프레임 버퍼 길이")
     parser.add_argument("--clip-pre-sec", type=float, default=2.0, help="클립 저장 시 시작 지점 앞쪽 마진 (기본값 2.0초로 증가)")
     parser.add_argument("--clip-post-sec", type=float, default=0.6, help="클립 저장 시 종료 지점 뒤쪽 마진")
@@ -1630,6 +1811,22 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
 def main(argv: Iterable[str]) -> None:
     import json
     args = parse_args(argv)
+    if args.camera_only:
+        if not args.enable_camera:
+            print("[설정] camera-only 모드이므로 --enable-camera 옵션을 자동 활성화합니다.")
+            args.enable_camera = True
+        args.skip_wifi_check = True
+    if args.enable_camera:
+        if args.camera_use_picamera2 is None:
+            args.camera_use_picamera2 = has_picamera2()
+            if args.camera_use_picamera2:
+                print("[설정] Picamera2 모듈을 감지했습니다. Raspberry Pi 카메라를 기본 사용합니다.")
+            else:
+                print("[설정] Picamera2 모듈을 찾을 수 없어 USB/V4L2 경로를 사용합니다.")
+        elif args.camera_use_picamera2:
+            print("[설정] Picamera2 백엔드를 강제로 사용합니다.")
+        else:
+            print("[설정] Picamera2 백엔드를 비활성화하고 USB/V4L2 경로를 사용합니다.")
     try:
         # Load config defaults
         if args.config and args.config.exists():
@@ -1686,4 +1883,3 @@ def main(argv: Iterable[str]) -> None:
 
 if __name__ == "__main__":
     main(sys.argv[1:])
-
