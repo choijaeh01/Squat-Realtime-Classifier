@@ -1582,7 +1582,7 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     )
     parser.add_argument("--config", type=Path, default=Path("config/training_config.json"))
     parser.add_argument("--model", type=Path, default=None, help="Model file path (.tflite or .weights.h5)")
-    parser.add_argument("--scaler", type=Path, default=Path("/home/jae/squat_classifier_ssl/checkpoints/squat_scaler_18axis.pkl"))
+    parser.add_argument("--scaler", type=Path, default=Path(__file__).parent.parent / "checkpoints" / "squat_scaler_18axis.pkl")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=12345)
     parser.add_argument("--window-size", type=int, default=None)
