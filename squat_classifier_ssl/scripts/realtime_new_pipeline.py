@@ -19,9 +19,11 @@ import subprocess
 import sys
 import time
 from collections import Counter, deque
+import csv
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Deque, Iterable, Optional, Tuple
+import json
 import os
 import select
 import logging
@@ -35,19 +37,37 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.train.modeling import build_squat_classifier  # noqa: E402
-
 DEFAULT_TFLITE_MODEL = Path(__file__).resolve().parent.parent / "exports" / "squat_classifier_fp16.tflite"
 DEFAULT_KERAS_WEIGHTS = Path(__file__).resolve().parent.parent / "checkpoints" / "squat_classifier_best.weights.h5"
 
 
 try:
-    import tensorflow as tf
-except ModuleNotFoundError as exc:
-    raise SystemExit(
-        "TensorFlow 모듈을 찾을 수 없습니다. "
-        "`pip install tensorflow` 또는 라즈베리파이용 wheel을 설치한 뒤 다시 시도하세요."
-    ) from exc
+    import tensorflow as tf  # type: ignore[assignment]
+    TF_AVAILABLE = True
+except (ModuleNotFoundError, ImportError):
+    TF_AVAILABLE = False
+    try:
+        from tflite_runtime.interpreter import Interpreter as _TFLiteInterpreter
+    except ModuleNotFoundError as exc:  # pragma: no cover - 배포 환경
+        raise SystemExit(
+            "TensorFlow 또는 tflite-runtime 모듈을 찾을 수 없습니다. "
+            "`pip install tensorflow` 혹은 `pip install tflite-runtime` 후 다시 시도하세요."
+        ) from exc
+
+    class _LiteModule:
+        Interpreter = _TFLiteInterpreter
+
+    class _TFShim:
+        lite = _LiteModule()
+
+    tf = _TFShim()  # type: ignore[assignment]
+    print("[설정] TensorFlow 미설치: tflite-runtime 인터프리터로 대체합니다.")
+
+if TF_AVAILABLE:
+    from src.train.modeling import build_squat_classifier  # noqa: E402
+else:
+    def build_squat_classifier(*_args, **_kwargs):
+        raise RuntimeError("TensorFlow 없이 Keras 모델을 생성할 수 없습니다. --use-keras 옵션을 비활성화하세요.")
 
 
 # -----------------------------------------------------------------------------
@@ -96,6 +116,37 @@ def decode_packet(packet: bytes) -> Tuple[int, int, Tuple[int, int, int], np.nda
     if magic != MAGIC:
         raise ValueError("Magic header 불일치")
     return seq, millis, (q0, q1, q2), np.asarray(values, dtype=np.float32)
+
+
+def pad_sequences_np(
+    sequences: Iterable[np.ndarray],
+    maxlen: int,
+    dtype: str = "float32",
+    padding: str = "post",
+    truncating: str = "post",
+) -> np.ndarray:
+    """
+    TensorFlow 없이도 사용할 수 있는 간단한 pad_sequences 구현.
+    """
+    sequences_list = [np.asarray(seq, dtype=dtype) for seq in sequences]
+    if not sequences_list:
+        return np.zeros((0, maxlen), dtype=dtype)
+    sample_shape = sequences_list[0].shape[1:]
+    result = np.zeros((len(sequences_list), maxlen, *sample_shape), dtype=dtype)
+    for idx, seq in enumerate(sequences_list):
+        length = seq.shape[0]
+        if length > maxlen:
+            if truncating == "pre":
+                trunc = seq[length - maxlen :]
+            else:
+                trunc = seq[:maxlen]
+        else:
+            trunc = seq
+        if padding == "pre":
+            result[idx, maxlen - len(trunc) : maxlen] = trunc
+        else:
+            result[idx, : len(trunc)] = trunc
+    return result
 
 
 def get_current_ssid(interface: str = "wlan0") -> Optional[str]:
@@ -190,7 +241,7 @@ class SmoothingPipeline:
 
     def __init__(
         self,
-        ema_alpha: float = 0.3,  # 스무딩 감소 (0.6 → 0.3)
+        ema_alpha: float = 0.6,  # 스무딩 감소 (기본값 0.1)
         uncertainty_p_max: float = 0.50,
         uncertainty_h: float = 1.2,
         majority_k: int = 3,  # 다수결 감소 (5 → 3)
@@ -262,7 +313,7 @@ class RepDetector:
         vel_zero_threshold: float = 0.3,
         vel_negative_threshold: float = -0.3,  # 더 민감하게 (하강 감지 개선)
         vel_positive_threshold: float = 0.3,  # 더 민감하게 (상승 감지 개선)
-        min_rep_duration_sec: float = 0.5,  # 최소 지속 시간 감소 (더 빠른 rep 감지)
+        min_rep_duration_sec: float = 1.0,  # 최소 지속 시간 감소 (더 빠른 rep 감지)
     ):
         """
         sample_rate_hz: 샘플링 주파수
@@ -587,6 +638,7 @@ class CameraWorker:
         self._last_is_bad = False
         self._last_cam_label = "NoPerson"
         self._last_cam_score = 0.0
+        self._camera_motion_state = "Waiting"
         self._frame_buf: Deque[tuple[float, np.ndarray]] = deque(maxlen=int(self.buffer_seconds * 30))
         self.start_event = threading.Event()
         self._last_clip_path: Optional[Path] = None
@@ -641,11 +693,13 @@ class CameraWorker:
         try:
             import cv2
             import mediapipe as mp
-            import tensorflow as tf
-            from tensorflow.keras.preprocessing.sequence import pad_sequences
-            mp_drawing = mp.solutions.drawing_utils
-        except Exception:
+        except ModuleNotFoundError as exc:
+            print(f"[Camera] 필수 모듈을 찾을 수 없어 비활성화합니다: {exc}")
             return
+        except Exception as exc:
+            print(f"[Camera] 초기화 중 예외 발생: {exc}")
+            return
+        mp_drawing = mp.solutions.drawing_utils
 
         def calculate_angle(a, b, c):
             a = np.asarray(a)
@@ -737,8 +791,8 @@ class CameraWorker:
         STATE_IN_MOTION = 1
         state = STATE_WAITING
         motion_buffer: list[list[float]] = []
-        KNEE_DOWN = 150.0
-        KNEE_UP = 155.0
+        KNEE_DOWN = 160.0
+        KNEE_UP = 165.0
 
         try:
             while not self._stop.is_set():
@@ -840,7 +894,13 @@ class CameraWorker:
                             if avg_knee_angle > KNEE_UP:
                                 state = STATE_WAITING
                                 if interpreter is not None and len(motion_buffer) > 10:
-                                    inp = pad_sequences([motion_buffer], maxlen=max_seq_len, dtype="float32", padding="post", truncating="post")
+                                    inp = pad_sequences_np(
+                                        [motion_buffer],
+                                        maxlen=max_seq_len,
+                                        dtype="float32",
+                                        padding="post",
+                                        truncating="post",
+                                    )
                                     if input_dtype == np.float16:
                                         inp = inp.astype(np.float16)
                                     interpreter.set_tensor(input_details[0]["index"], inp)
@@ -872,21 +932,23 @@ class CameraWorker:
                 camera_text = ""
                 camera_color = (255, 255, 255)
                 with self._lock:
+                    self._camera_motion_state = "InMotion" if state == STATE_IN_MOTION else "Waiting"
                     self._person_present = detected
                     if not detected:
                         self._last_cam_label = "NoPerson"
                         self._last_cam_score = 0.0
                     cam_label = self._last_cam_label
                     cam_score = self._last_cam_score
+                    motion_state = self._camera_motion_state
                     camera_lines: list[str] = []
                     if self.show_class_overlay:
-                        if cam_label == "NoPerson":
+                        if motion_state == "InMotion":
+                            camera_lines.append("Camera: In Motion")
+                        elif cam_label == "NoPerson":
                             camera_lines.append("Camera: No Person")
                         else:
-                            label_text = cam_label
-                            if cam_score > 0:
-                                label_text += f" ({cam_score * 100:.0f}%)"
-                            camera_lines.append(f"Camera: {label_text}")
+                            score_text = f"{cam_score * 100:.0f}%" if cam_score > 0 else "--%"
+                            camera_lines.append(f"Camera score: {score_text}")
                     if avg_knee_angle >= 0:
                         camera_lines.append(f"Knee: {avg_knee_angle:.1f} deg")
                     else:
@@ -1396,7 +1458,7 @@ class RealTimeClassifier:
                         is_transition = window_record.get("is_transition", False)
                         probs = np.array(window_record["probs"])
                         original_class = class_id
-                        fused_class = 0 if class_id == 4 else class_id
+                        fused_class = class_id
                         
                         # Descent 과정 중에는 Knee Valgus (class 1) 판정 무시
                         if self.rep_detector.state == self.rep_detector.STATE_DESCENT and fused_class == 1:
@@ -1405,8 +1467,6 @@ class RealTimeClassifier:
                             class_id = 0  # 오버레이에도 반영
                         
                         label, feedback = CLASS_FEEDBACK[fused_class]
-                        if original_class == 4:
-                            feedback = "Keep going"
                         
                         # rep 진행 중인지 확인
                         is_rep_active = self.rep_detector.rep_start_t is not None
@@ -1447,16 +1507,14 @@ class RealTimeClassifier:
                                 print(f"   시간: {rep_start:.2f}s~{rep_end:.2f}s, 분포: {new_rep.get('class_distribution', {})}\n")
                                 self._last_logged_rep_id = rep_id
                                 # 마지막 rep 정보 업데이트 (카메라 오버레이용)
-                                # 실시간 기반 분류 또는 리샘플링 기반 분류 중 하나라도 Partial Squat이면 Partial Squat으로 표기
-                                final_label = rep_label
-                                if rep_label == 4 or new_rep.get("resampled_label") == 4:
-                                    final_label = 4  # Partial Squat
-                                
+                                # 리샘플링 결과를 우선 사용
+                                resampled_label = new_rep.get("resampled_label")
+                                final_label = resampled_label if resampled_label is not None else rep_label
                                 final_label_name = CLASS_LABELS_EN.get(final_label, f"Class {final_label}")
                                 self._last_rep_info = {
                                     "rep_id": rep_id,
-                                    "resampled_label": new_rep.get("resampled_label"),
-                                    "final_label": final_label,  # Partial Squat 체크 포함
+                                    "resampled_label": resampled_label,
+                                    "final_label": final_label,
                                     "label_text": final_label_name,
                                     "color": self._class_to_overlay_color(final_label),
                                 }
@@ -1487,22 +1545,19 @@ class RealTimeClassifier:
                             else:
                                 print(f"\n🎯 Rep #{rep_id} 완료: {rep_label_name} (confidence: {rep_conf:.2f})")
                                 print(f"   시간: {rep_start:.2f}s~{rep_end:.2f}s, 분포: {rep_record.get('class_distribution', {})}\n")
-                            
+
                             # 마지막 rep 정보 저장 (카메라 오버레이용)
-                            # 실시간 기반 분류 또는 리샘플링 기반 분류 중 하나라도 Partial Squat이면 Partial Squat으로 표기
-                            final_label = rep_label
-                            if rep_label == 4 or rep_record.get("resampled_label") == 4:
-                                final_label = 4  # Partial Squat
-                            
+                            # 리샘플링 결과를 우선 사용
+                            resampled_label = rep_record.get("resampled_label")
+                            final_label = resampled_label if resampled_label is not None else rep_label
                             final_label_name = CLASS_LABELS_EN.get(final_label, f"Class {final_label}")
                             self._last_rep_info = {
                                 "rep_id": rep_id,
-                                "resampled_label": rep_record.get("resampled_label"),
-                                "final_label": final_label,  # Partial Squat 체크 포함
+                                "resampled_label": resampled_label,
+                                "final_label": final_label,
                                 "label_text": final_label_name,
                                 "color": self._class_to_overlay_color(final_label),
                             }
-                            
                             # rep 샘플 버퍼 초기화
                             self.rep_samples.clear()
 
@@ -1520,10 +1575,8 @@ class RealTimeClassifier:
                                     sensor_lines.append(f"Rep {self._current_rep_id}: {status_text}")
                                     if self.rep_detector.rep_validated:
                                         current_pose = CLASS_LABELS_EN.get(fused_class, f"Class {fused_class}")
-                                        if original_class == 4:
-                                            current_pose = "Keep going"
                                         sensor_lines.append(f"Now: {current_pose}")
-                                    overlay_color = self._class_to_overlay_color(original_class if original_class == 4 else fused_class)
+                                    overlay_color = self._class_to_overlay_color(fused_class)
                                 elif self._last_rep_info is not None:
                                     rep_id = self._last_rep_info.get("rep_id", 0)
                                     rep_label_text = self._last_rep_info.get("label_text")
@@ -1582,6 +1635,7 @@ class RealTimeClassifier:
             print(f"완료된 Rep:        {len(self.rep_detector.rep_records):8d}")
             print("=" * 72)
             self._save_plot()
+            self._save_session_records()
             if self.camera is not None:
                 self.camera.stop()
 
@@ -1682,8 +1736,6 @@ class RealTimeClassifier:
                 resampled_label = rep_record.get("resampled_label")
                 base_label = rep_record.get("label", 0)
                 final_label = resampled_label if resampled_label is not None else base_label
-                if base_label == 4 or resampled_label == 4:
-                    final_label = 4
                 rep_color = CLASS_COLORS.get(final_label, "#7f8c8d")
                 ax_gz.axvspan(rep_start_rel, rep_end_rel, color=rep_color, alpha=0.2)
                 ax_cls.axvspan(rep_start_rel, rep_end_rel, color=rep_color, alpha=0.25)
@@ -1729,6 +1781,59 @@ class RealTimeClassifier:
         finally:
             plt.close(fig)
 
+    def _save_session_records(self) -> None:
+        """윈도우/rep 추론 결과를 CSV로 저장"""
+        output_dir = PROJECT_ROOT / "logs/realtime_sessions"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        windows_path = output_dir / f"{self.session_id}_windows.csv"
+        reps_path = output_dir / f"{self.session_id}_reps.csv"
+
+        window_fields = ["start_sec", "end_sec", "class_id", "confidence", "entropy"]
+        with windows_path.open("w", newline="") as wf:
+            writer = csv.DictWriter(wf, fieldnames=window_fields)
+            writer.writeheader()
+            for record in self.window_records:
+                writer.writerow({
+                    "start_sec": float(record.get("start_sec", 0.0)),
+                    "end_sec": float(record.get("end_sec", 0.0)),
+                    "class_id": int(record.get("class_id", -1)),
+                    "confidence": float(record.get("confidence", 0.0)),
+                    "entropy": float(record.get("entropy", 0.0)),
+                })
+        print(f"Saved window records to {windows_path}")
+
+        rep_fields = [
+            "rep_id",
+            "start_sec",
+            "end_sec",
+            "base_label",
+            "resampled_label",
+            "final_label",
+            "confidence",
+            "resampled_confidence",
+            "class_distribution",
+        ]
+        with reps_path.open("w", newline="") as rf:
+            writer = csv.DictWriter(rf, fieldnames=rep_fields)
+            writer.writeheader()
+            for rep in self.rep_detector.rep_records:
+                base_label = rep.get("label")
+                resampled_label = rep.get("resampled_label")
+                final_label = resampled_label if resampled_label is not None else base_label
+                writer.writerow({
+                    "rep_id": int(rep.get("rep_id", 0)),
+                    "start_sec": float(rep.get("start_t", 0.0) - self.session_start_ts),
+                    "end_sec": float(rep.get("end_t", 0.0) - self.session_start_ts),
+                    "base_label": int(base_label) if base_label is not None else "",
+                    "resampled_label": "" if resampled_label is None else int(resampled_label),
+                    "final_label": int(final_label) if final_label is not None else "",
+                    "confidence": float(rep.get("confidence", 0.0)),
+                    "resampled_confidence": float(rep.get("resampled_confidence", 0.0)) if rep.get("resampled_confidence") is not None else "",
+                    "class_distribution": json.dumps(rep.get("class_distribution", {}), ensure_ascii=False),
+                })
+        print(f"Saved rep records to {reps_path}")
+
 
 # -----------------------------------------------------------------------------
 # 메인
@@ -1752,7 +1857,7 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     # 슬라이딩 윈도우
     parser.add_argument("--sliding-stride-sec", type=float, default=0.25, help="슬라이딩 윈도우 stride (초). 기본값 0.25 (지연 감소)")
     # 스무딩 파이프라인
-    parser.add_argument("--ema-alpha", type=float, default=0.3, help="EMA 스무딩 계수 (기본값 0.3, 스무딩 감소)")
+    parser.add_argument("--ema-alpha", type=float, default=0.9, help="EMA 스무딩 계수 (기본값 0.1)")
     parser.add_argument("--uncertainty-p-max", type=float, default=0.25, help="불확실성 보류 p_max 임계값 (기본값 0.25로 더 낮춤)")
     parser.add_argument("--uncertainty-h", type=float, default=1.6, help="불확실성 보류 엔트로피 임계값 (기본값 1.6로 더 높임)")
     parser.add_argument("--majority-k", type=int, default=3, help="다수결 투표 히스토리 길이 (기본값 3, 스무딩 감소)")
@@ -1841,6 +1946,11 @@ def main(argv: Iterable[str]) -> None:
             args.per_window_zscore = bool(cfg.get("per_window_zscore", True))
 
         # Select backend/model path defaults
+        if args.use_keras and not TF_AVAILABLE:
+            raise SystemExit(
+                "--use-keras 옵션은 TensorFlow 전체 패키지가 설치된 환경에서만 사용할 수 있습니다. "
+                "tflite-runtime만 설치된 경우에는 기본 TFLite 경로를 사용하세요."
+            )
         default_model_path = DEFAULT_KERAS_WEIGHTS if args.use_keras else DEFAULT_TFLITE_MODEL
         selected_model = args.model or default_model_path
         if not selected_model.exists():
